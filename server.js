@@ -26,7 +26,6 @@ function getMaxDevices(key) {
 function cleanInactiveSlots() {
   const now = Date.now();
   for (const key in activeSlots) {
-    // Giữ lại các slot chưa timeout
     activeSlots[key] = activeSlots[key].filter(timestamp => (now - timestamp) <= TIMEOUT_MS);
   }
   fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
@@ -51,7 +50,8 @@ app.post("/validate", (req, res) => {
   cleanInactiveSlots();
 
   if (activeSlots[key].length >= maxDevices) {
-    return res.json({ success: false, message: Đã đạt số lượng thiết bị tối đa (${maxDevices}) });
+    // Dùng backtick cho template string
+    return res.json({ success: false, message: `Đã đạt số lượng thiết bị tối đa (${maxDevices})` });
   }
 
   activeSlots[key].push(Date.now());
@@ -66,7 +66,6 @@ app.post("/release", (req, res) => {
 
   if (!activeSlots[key]) return res.json({ success: false, message: "Key không tồn tại hoặc không có thiết bị đăng ký" });
 
-  // Bỏ slot cũ nhất (ví dụ theo queue)
   activeSlots[key].shift();
   fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
 
@@ -74,5 +73,5 @@ app.post("/release", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(Server đang chạy trên cổng ${PORT});
-});  
+  console.log(`Server đang chạy trên cổng ${PORT}`);
+});
