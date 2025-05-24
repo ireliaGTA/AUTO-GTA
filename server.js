@@ -8,12 +8,16 @@ const PORT = process.env.PORT || 3000;
 
 let keys = JSON.parse(fs.readFileSync("./keys.json", "utf-8"));
 
-// Sửa đoạn này: kiểm tra nếu active.json là object, không phải mảng
 let activeSlots = {};
 try {
-  const raw = JSON.parse(fs.readFileSync("./active.json", "utf-8"));
-  activeSlots = (typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
-} catch {
+  const raw = fs.readFileSync("./active.json", "utf-8");
+  activeSlots = JSON.parse(raw);
+  if (Array.isArray(activeSlots)) {
+    console.warn("⚠️ active.json đang là mảng [], cần là object {}");
+    activeSlots = {};
+  }
+} catch (err) {
+  console.log("Không tìm thấy hoặc lỗi đọc active.json, tạo mới.");
   activeSlots = {};
 }
 
@@ -21,8 +25,7 @@ const TIMEOUT_MS = 10 * 60 * 1000;
 
 function getMaxDevices(key) {
   const keyData = keys.find(k => k.key === key);
-  if (!keyData) return 0;
-  return keyData.maxDevices || 1;
+  return keyData?.maxDevices || 1;
 }
 
 function cleanInactiveSlots() {
@@ -56,7 +59,13 @@ app.post("/validate", (req, res) => {
   }
 
   activeSlots[key].push(Date.now());
-  fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
+
+  try {
+    fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
+    console.log("✅ Đã ghi active.json:", activeSlots);
+  } catch (err) {
+    console.error("❌ Lỗi ghi active.json:", err.message);
+  }
 
   res.json({ success: true, message: "Key hợp lệ" });
 });
@@ -65,14 +74,22 @@ app.post("/release", (req, res) => {
   const { key } = req.body;
   if (!key) return res.json({ success: false, message: "Thiếu key" });
 
-  if (!activeSlots[key]) return res.json({ success: false, message: "Key không tồn tại hoặc không có thiết bị đăng ký" });
+  if (!activeSlots[key] || activeSlots[key].length === 0) {
+    return res.json({ success: false, message: "Key không có thiết bị nào đang sử dụng" });
+  }
 
   activeSlots[key].shift();
-  fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
 
-  res.json({ success: true, message: "Thiết bị đã được giải phóng" });
+  try {
+    fs.writeFileSync("./active.json", JSON.stringify(activeSlots, null, 2));
+    console.log("✅ Đã ghi sau release:", activeSlots);
+  } catch (err) {
+    console.error("❌ Lỗi ghi sau release:", err.message);
+  }
+
+  res.json({ success: true, message: "Đã giải phóng 1 thiết bị" });
 });
 
 app.listen(PORT, () => {
-  console.log(`Server đang chạy trên cổng ${PORT}`);
+  console.log(`🚀 Server chạy tại cổng ${PORT}`);
 });
