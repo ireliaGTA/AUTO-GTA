@@ -8,9 +8,11 @@ const PORT = process.env.PORT || 3000;
 
 let keys = JSON.parse(fs.readFileSync("./keys.json", "utf-8"));
 
+// Sửa đoạn này: kiểm tra nếu active.json là object, không phải mảng
 let activeSlots = {};
 try {
-  activeSlots = JSON.parse(fs.readFileSync("./active.json", "utf-8"));
+  const raw = JSON.parse(fs.readFileSync("./active.json", "utf-8"));
+  activeSlots = (typeof raw === "object" && !Array.isArray(raw)) ? raw : {};
 } catch {
   activeSlots = {};
 }
@@ -50,7 +52,6 @@ app.post("/validate", (req, res) => {
   cleanInactiveSlots();
 
   if (activeSlots[key].length >= maxDevices) {
-    // Dùng backtick cho template string
     return res.json({ success: false, message: `Đã đạt số lượng thiết bị tối đa (${maxDevices})` });
   }
 
