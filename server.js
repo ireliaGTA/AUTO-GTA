@@ -19,7 +19,7 @@ try {
 let activeSlots = {};
 
 // Timeout cho slot (vd: 10 phút)
-const TIMEOUT_MS = 10 * 60 * 1000;
+const TIMEOUT_MS = 5 * 60 * 1000;
 
 function cleanInactiveSlots() {
   const now = Date.now();
