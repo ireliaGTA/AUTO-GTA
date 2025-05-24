@@ -1,67 +1,78 @@
-// server.js
-const express = require('express')
-const fs = require('fs')
-const path = require('path')
-const app = express()
-const PORT = process.env.PORT || 3000
+import express from "express";
+import fs from "fs";
 
-app.use(express.json())
+const app = express();
+app.use(express.json());
 
-const keysPath = path.join(__dirname, 'keys.json')
-const activePath = path.join(__dirname, 'active.json')
+const PORT = process.env.PORT || 3000;
 
-// Helper to read/write JSON
-function readJSON(filePath) {
-  if (!fs.existsSync(filePath)) return []
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'))
-}
-function writeJSON(filePath, data) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
+// Đọc file keys.json (giữ nguyên cấu trúc cũ)
+let keys = JSON.parse(fs.readFileSync("./keys.json", "utf-8"));
+
+// active.json lưu trạng thái thiết bị active của từng key
+let activeDevices = {};
+try {
+  activeDevices = JSON.parse(fs.readFileSync("./active.json", "utf-8"));
+} catch {
+  activeDevices = {};
 }
 
-// Endpoint: /validate
-app.post('/validate', (req, res) => {
-  const { key } = req.body
-  if (!key) return res.json({ success: false, message: 'Thiếu key' })
+// Hàm lấy maxDevices mặc định 1 nếu không có trong keys.json
+function getMaxDevices(key) {
+  const keyData = keys.find(k => k.key === key);
+  if (!keyData) return 0;
+  return keyData.maxDevices || 1;
+}
 
-  const keys = readJSON(keysPath)
-  const active = readJSON(activePath)
+// API kiểm tra key và đăng ký thiết bị
+app.post("/validate", (req, res) => {
+  const { key, deviceId } = req.body;
+  if (!key || !deviceId) return res.json({ success: false, message: "Thiếu key hoặc deviceId" });
 
-  const found = keys.find(k => k.key === key)
-  if (!found) return res.json({ success: false, message: 'Key không tồn tại' })
+  const keyData = keys.find(k => k.key === key);
+  if (!keyData) return res.json({ success: false, message: "Key không tồn tại" });
 
-  const now = new Date()
-  const expiry = new Date(found.expiry)
-  if (now > expiry) return res.json({ success: false, message: 'Key đã hết hạn' })
-
-  const count = active.filter(k => k === key).length
-  const maxDevices = 1  // Số thiết bị tối đa
-
-  if (count >= maxDevices)
-    return res.json({ success: false, message: 'Key đã được dùng ở thiết bị khác' })
-
-  active.push(key)
-  writeJSON(activePath, active)
-  return res.json({ success: true, message: 'Key hợp lệ' })
-})
-
-// Endpoint: /release
-app.post('/release', (req, res) => {
-  const { key } = req.body
-  if (!key) return res.json({ success: false })
-
-  let active = readJSON(activePath)
-  const originalLength = active.length
-  active = active.filter(k => k !== key)
-
-  if (active.length !== originalLength) {
-    writeJSON(activePath, active)
-    return res.json({ success: true })
-  } else {
-    return res.json({ success: false })
+  // Kiểm tra ngày hết hạn (nếu có)
+  if (keyData.expiry && new Date(keyData.expiry) < new Date()) {
+    return res.json({ success: false, message: "Key đã hết hạn" });
   }
-})
+
+  // Lấy số thiết bị tối đa được phép dùng
+  const maxDevices = getMaxDevices(key);
+
+  if (!activeDevices[key]) activeDevices[key] = [];
+
+  // Nếu thiết bị đã đăng ký rồi thì cứ cho qua
+  if (activeDevices[key].includes(deviceId)) {
+    return res.json({ success: true, message: "Key hợp lệ" });
+  }
+
+  // Nếu số thiết bị đã đạt max thì từ chối
+  if (activeDevices[key].length >= maxDevices) {
+    return res.json({ success: false, message: `Đã đạt số lượng thiết bị tối đa (${maxDevices})` });
+  }
+
+  // Đăng ký thiết bị mới
+  activeDevices[key].push(deviceId);
+  fs.writeFileSync("./active.json", JSON.stringify(activeDevices, null, 2));
+
+  res.json({ success: true, message: "Key hợp lệ" });
+});
+
+// API release thiết bị khi thoát
+app.post("/release", (req, res) => {
+  const { key, deviceId } = req.body;
+  if (!key || !deviceId) return res.json({ success: false, message: "Thiếu key hoặc deviceId" });
+
+  if (!activeDevices[key]) return res.json({ success: false, message: "Key không tồn tại hoặc không có thiết bị đăng ký" });
+
+  activeDevices[key] = activeDevices[key].filter(id => id !== deviceId);
+
+  fs.writeFileSync("./active.json", JSON.stringify(activeDevices, null, 2));
+
+  res.json({ success: true, message: "Thiết bị đã được giải phóng" });
+});
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`)
-})
+  console.log(`Server đang chạy trên cổng ${PORT}`);
+});
